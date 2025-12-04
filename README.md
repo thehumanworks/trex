@@ -12,6 +12,10 @@
 - Account statuses are printed at the end of the process (see REQUIREMENTS.md). Optionally, passing --log prints out the transaction log (immutable event source).
 - All functionality is done in-process, no DBs, no additional infra, but the architecture is designed to be extensible.
 
+## Testing
+- sample csv have been generated and manually tested on top of the ones provided. They live in "./data".
+- there are over 30 tests covering different ground truths and expectations: both negative scenarios (invalid CSV), processing data or ensuring ordering and lifetime of queuing.
+
 ## (Many) Notes on scale
 
 - **Queuing**: the queuing mechanism would require a solution with strong durability and consistency guarantees. Something like Kafka, Redpanda, SQS, Pub/Sub... the most important in this case is ensuring transaction ordering.
