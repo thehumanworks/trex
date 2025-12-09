@@ -39,19 +39,34 @@ impl Engine {
             return;
         }
 
+        let mut ensure_valid =
+            |tx: Transaction, callable: &mut dyn FnMut() -> TransactionStatus| {
+                if self.transactions.iter().any(|entry| entry.tx.tx.eq(&tx.tx)) {
+                    status = TransactionStatus::FailedDuplicateTxID;
+                } else if let Some(amount) = tx.amount
+                    && &amount <= &0.0
+                {
+                    status = TransactionStatus::FailedInvalidAmount;
+                } else {
+                    status = callable();
+                }
+            };
+
         match tx._type {
             TransactionType::Deposit => {
                 if let Some(amount) = tx.amount {
-                    account.deposit(amount);
-                    status = TransactionStatus::Applied;
-                    self.tx_state.insert(
-                        tx.tx,
-                        TxState {
-                            client: tx.client,
-                            amount,
-                            dispute_state: DisputeState::Normal,
-                        },
-                    );
+                    ensure_valid(tx.clone(), &mut || {
+                        account.deposit(amount);
+                        self.tx_state.insert(
+                            tx.tx,
+                            TxState {
+                                client: tx.client,
+                                amount,
+                                dispute_state: DisputeState::Normal,
+                            },
+                        );
+                        TransactionStatus::Applied
+                    });
                 } else {
                     status = TransactionStatus::FailedInvalidAmount;
                 }
@@ -63,9 +78,8 @@ impl Engine {
                     return;
                 };
 
-                match account.withdraw(amount) {
+                ensure_valid(tx.clone(), &mut || match account.withdraw(amount) {
                     Ok(_) => {
-                        status = TransactionStatus::Applied;
                         self.tx_state.insert(
                             tx.tx,
                             TxState {
@@ -74,12 +88,13 @@ impl Engine {
                                 dispute_state: DisputeState::Normal,
                             },
                         );
+                        TransactionStatus::Applied
                     }
                     Err(e) => {
                         warn!("Withdrawal error: {}", e);
-                        status = TransactionStatus::FailedInsufficientFunds;
+                        TransactionStatus::FailedInsufficientFunds
                     }
-                }
+                });
             }
             TransactionType::Dispute => {
                 status = self
@@ -204,10 +219,84 @@ impl Default for Engine {
 
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
+
     use super::*;
 
     fn tx(t: TransactionType, client: u16, tx_id: u32, amount: Option<f64>) -> Transaction {
         Transaction::new(t, client, tx_id, amount)
+    }
+
+    #[test]
+    fn chargeback_attempt_while_locked_is_rejected() {
+        let mut engine = Engine::new();
+        engine.process(tx(TransactionType::Deposit, 1, 1, Some(100.0)));
+        engine.process(tx(TransactionType::Dispute, 1, 1, None));
+        engine.process(tx(TransactionType::Chargeback, 1, 1, None));
+        engine.process(tx(TransactionType::Chargeback, 1, 1, None));
+
+        let account = engine.get_account(1).unwrap();
+        assert_eq!(account.available(), 0.0);
+        assert_eq!(account.held(), 0.0);
+        assert_eq!(account.total(), 0.0);
+        assert!(account.is_locked());
+        assert!(
+            engine
+                .transactions
+                .iter()
+                .filter(|stored_tx| stored_tx.tx._type == TransactionType::Chargeback)
+                .count()
+                == 2
+        );
+        println!("{:?}", engine.transactions);
+        assert!(
+            engine
+                .transactions
+                .iter()
+                .filter(
+                    |stored_tx| stored_tx.tx._type == TransactionType::Chargeback
+                        && stored_tx.status == TransactionStatus::IgnoredLocked
+                )
+                .count()
+                == 1
+        );
+    }
+
+    #[test]
+    fn zero_amount_is_rejected() {
+        let mut engine = Engine::new();
+        engine.process(tx(TransactionType::Deposit, 1, 1, Some(0.0)));
+
+        let account = engine.get_account(1).unwrap();
+        assert_eq!(account.available(), 0.0);
+        assert_eq!(account.held(), 0.0);
+        assert_eq!(account.total(), 0.0);
+        assert!(!account.is_locked());
+    }
+
+    #[test]
+    fn negative_amount_is_rejected() {
+        let mut engine = Engine::new();
+        engine.process(tx(TransactionType::Deposit, 1, 1, Some(-100.0)));
+
+        let account = engine.get_account(1).unwrap();
+        assert_eq!(account.available(), 0.0);
+        assert_eq!(account.held(), 0.0);
+        assert_eq!(account.total(), 0.0);
+        assert!(!account.is_locked());
+    }
+
+    #[test]
+    fn duplicate_transactions_ids_are_rejected() {
+        let mut engine = Engine::new();
+        engine.process(tx(TransactionType::Deposit, 1, 1, Some(100.0)));
+        engine.process(tx(TransactionType::Withdrawal, 1, 1, Some(50.0)));
+
+        let account = engine.get_account(1).unwrap();
+        assert_eq!(account.available(), 100.0);
+        assert_eq!(account.held(), 0.0);
+        assert_eq!(account.total(), 100.0);
+        assert!(!account.is_locked());
     }
 
     #[test]

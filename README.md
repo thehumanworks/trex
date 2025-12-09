@@ -13,6 +13,7 @@
 - All functionality is done in-process, no DBs, no additional infra, but the architecture is designed to be extensible.
 
 ## Testing
+
 - sample csv have been generated and manually tested on top of the ones provided. They live in "./data".
 - there are over 30 tests covering different ground truths and expectations: both negative scenarios (invalid CSV), processing data or ensuring ordering and lifetime of queuing.
 

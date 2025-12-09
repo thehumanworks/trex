@@ -50,6 +50,7 @@ pub enum TransactionStatus {
     IgnoredMissingReference,
     FailedInsufficientFunds,
     FailedInvalidAmount,
+    FailedDuplicateTxID,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
@@ -113,5 +114,6 @@ fn format_status(status: TransactionStatus) -> &'static str {
         TransactionStatus::IgnoredMissingReference => "ignored_missing_reference",
         TransactionStatus::FailedInsufficientFunds => "failed_insufficient_funds",
         TransactionStatus::FailedInvalidAmount => "failed_invalid_amount",
+        TransactionStatus::FailedDuplicateTxID => "failed_duplicate_tx_id",
     }
 }

@@ -76,6 +76,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn whitespace_is_handled_correctly() {
+        let engine = run_engine("data/input/whitespace.csv", ProcessingMode::SingleFile)
+            .await
+            .expect("engine should process whitespace.csv");
+        let accounts = engine.get_accounts();
+        assert_eq!(accounts.len(), 2);
+    }
+
+    #[tokio::test]
     async fn full_flow_dataset_matches_expected_balances() {
         let engine = run_engine("data/input/full_flow_large.csv", ProcessingMode::SingleFile)
             .await

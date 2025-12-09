@@ -1,6 +1,4 @@
 use std::path::PathBuf;
-
-use csv::Reader;
 use tokio::sync::mpsc;
 
 use crate::ledger::{engine::Engine, transaction::Transaction};
@@ -17,7 +15,10 @@ impl TransactionConsumer {
 
     pub async fn consume(mut self) -> anyhow::Result<Engine> {
         while let Some(path) = self.rx.recv().await {
-            let mut reader = Reader::from_path(path)?;
+            // trim whitespace fix
+            let mut reader = csv::ReaderBuilder::new()
+                .trim(csv::Trim::All)
+                .from_path(path)?;
 
             for result in reader.deserialize::<Transaction>() {
                 let tx: Transaction = result?;
